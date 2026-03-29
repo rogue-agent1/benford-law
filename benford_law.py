@@ -1,25 +1,35 @@
 #!/usr/bin/env python3
-"""benford_law - Benford's Law analysis for fraud detection."""
-import sys,math,collections
-def first_digit(n):
-    n=abs(n)
-    while n>=10:n/=10
-    return int(n)
-def benford_expected(d):return math.log10(1+1/d)
+"""benford_law - Benford's Law analysis."""
+import sys, argparse, json, math, re
+from collections import Counter
+
+def expected_benford(d):
+    return math.log10(1 + 1/d)
+
 def analyze(numbers):
-    counts=collections.Counter(first_digit(n) for n in numbers if n!=0)
-    total=sum(counts.values());result=[]
-    for d in range(1,10):
-        obs=counts.get(d,0)/total if total else 0;exp=benford_expected(d)
-        result.append({"digit":d,"observed":round(obs,4),"expected":round(exp,4),"deviation":round(abs(obs-exp),4)})
-    chi2=sum((r["observed"]-r["expected"])**2/r["expected"] for r in result)
-    return result,round(chi2,4)
-if __name__=="__main__":
-    if len(sys.argv)<2:
-        import random;numbers=[random.randint(1,999999) for _ in range(10000)]
-        print("Random data (should follow Benford's):")
-    else:numbers=[float(x) for x in open(sys.argv[1]).read().split() if x.strip()]
-    result,chi2=analyze(numbers)
-    print(f"{'Digit':>5} {'Observed':>10} {'Expected':>10} {'Deviation':>10}")
-    for r in result:print(f"{r['digit']:>5} {r['observed']:>10.4f} {r['expected']:>10.4f} {r['deviation']:>10.4f}")
-    print(f"\nChi-squared: {chi2} {'(suspicious)' if chi2>15.51 else '(normal)'}")
+    first_digits = []
+    for n in numbers:
+        s = re.sub(r"[^0-9]", "", str(n).lstrip("0").lstrip("-"))
+        if s: first_digits.append(int(s[0]))
+    freq = Counter(first_digits)
+    total = len(first_digits)
+    results = []
+    chi_sq = 0
+    for d in range(1, 10):
+        observed = freq.get(d, 0) / total if total else 0
+        expected = expected_benford(d)
+        chi_sq += ((observed - expected)**2) / expected if expected else 0
+        results.append({"digit": d, "observed": round(observed, 4), "expected": round(expected, 4), "count": freq.get(d, 0), "deviation": round(abs(observed - expected), 4)})
+    return {"total_numbers": total, "chi_squared": round(chi_sq, 4), "conformity": "good" if chi_sq < 15.51 else "poor", "digits": results}
+
+def main():
+    p = argparse.ArgumentParser(description="Benford's Law analyzer")
+    p.add_argument("input", help="Numbers (comma-sep) or @filename")
+    args = p.parse_args()
+    inp = args.input
+    if inp.startswith("@"):
+        with open(inp[1:]) as f: inp = f.read()
+    numbers = re.findall(r"-?\d+\.?\d*", inp)
+    print(json.dumps(analyze(numbers), indent=2))
+
+if __name__ == "__main__": main()
